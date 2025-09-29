@@ -103,9 +103,9 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
     return;
   }
 
-   output.innerHTML =
+  output.innerHTML =
     '<p><strong>Start ID:</strong> <code>' + searchId + '</code></p>' +
-    renderList('Next ' + EMPTY_COUNT + ' locations with EMPTY Bin ', locations);
+    renderList('Next ' + EMPTY_COUNT + ' locations with EMPTY Bins', locations);
 });
 
 /* ------------ Camera scanning (html5-qrcode) ------------ */
