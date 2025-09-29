@@ -103,10 +103,10 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
     return;
   }
 
-  output.innerHTML = `
-    <p><strong>Start ID:</strong> <code>${searchId}</code></p>
-    ${renderList(\`Next ${EMPTY_COUNT} locations with EMPTY in column 2\`, locations)}
-  `;
+  output.innerHTML =
+    '<p><strong>Start ID:</strong> <code>' + searchId + '</code></p>' +
+    renderList('Next ' + EMPTY_COUNT + ' locations with EMPTY in column 2', locations);
+
 });
 
 /* ------------ Camera scanning (html5-qrcode) ------------ */
