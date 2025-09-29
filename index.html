@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Search from Excel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- SheetJS (read Excel) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- html5-qrcode (camera scanning) -->
+  <script src="https://unpkg.com/html5-qrcode" defer></script>
+
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #0d6efd;
+      --primary-hover: #0b5ed7;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--text); background: var(--bg);
+    }
+    h2 { text-align: center; margin: 0 0 16px; }
+    .card {
+      max-width: 800px; margin: 0 auto; background: var(--card);
+      border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,.06);
+      padding: 16px;
+    }
+    form {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center;
+      margin-bottom: 12px;
+    }
+    input[type="text"] {
+      flex: 1 1 260px; min-width: 200px;
+      padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;
+    }
+    button {
+      padding: 10px 14px; border: 0; border-radius: 8px; cursor: pointer; font-size: 1rem;
+      background: var(--primary); color: #fff;
+    }
+    button:hover { background: var(--primary-hover); }
+    #scannerWrap { display: none; margin-top: 12px; text-align: center; }
+    #qr-reader { width: 100%; max-width: 360px; margin: 0 auto; }
+    .muted { color: var(--muted); font-size: .92rem; }
+    #output {
+      margin-top: 12px; padding: 12px; background: var(--card); border-radius: 8px;
+      border: 1px solid #e5e7eb;
+    }
+    ol { margin: 8px 0 0 20px; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+    @media (max-width: 480px) {
+      button { flex: 1 1 100%; }
+    }
+  </style>
+
+  <!-- Your logic file -->
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <h2>Search from Excel</h2>
+
+  <div class="card">
+    <form id="searchForm">
+      <input type="text" id="id" name="id" required
+             placeholder="Enter or scan ID" autocomplete="off" />
+      <button type="submit">Search</button>
+      <button type="button" id="scanBtn">📷 Scan</button>
+    </form>
+
+    <div id="scannerWrap">
+      <div id="qr-reader"></div>
+      <p class="muted">Tip: allow camera permission (HTTPS). Rear camera is used on phones.</p>
+      <button type="button" id="stopScanBtn">Stop camera</button>
+    </div>
+
+    <div id="output"></div>
+  </div>
+</body>
+</html>
