@@ -105,7 +105,7 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
 
    output.innerHTML =
     '<p><strong>Start ID:</strong> <code>' + searchId + '</code></p>' +
-    renderList(locations);
+    renderList('Next ' + EMPTY_COUNT + ' locations with EMPTY Bin ', locations);
 });
 
 /* ------------ Camera scanning (html5-qrcode) ------------ */
