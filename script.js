@@ -104,8 +104,7 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
   }
 
   output.innerHTML =
-    '<p><strong>Start ID:</strong> <code>' + searchId + '</code></p>' +
-    renderList('Next ' + EMPTY_COUNT + ' locations with EMPTY in column 2', locations);
+    '<p><strong>Start ID:</strong> <code>' + searchId + '</code></p>';
 
 });
 
