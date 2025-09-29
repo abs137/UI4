@@ -1,7 +1,10 @@
-let rowsRaw = [];   // full sheet rows (array of arrays) to preserve order
-const EMPTY_COUNT = 20; // <-- how many EMPTY bins to return
+// HOW MANY empty bins to return by default
+const EMPTY_COUNT = 20;
 
-/* ------------ Excel loading (keep order) ------------ */
+// Full sheet rows (array of arrays) to preserve order
+let rowsRaw = [];
+
+/* ------------ Excel loading (keeps order; works with/without header) ------------ */
 async function loadExcel() {
   try {
     const res = await fetch("./book1.xlsx");
@@ -11,31 +14,44 @@ async function loadExcel() {
     const wb = XLSX.read(data, { type: "array" });
     const sheet = wb.Sheets[wb.SheetNames[0]];
 
-    // header:1 -> arrays; raw:false -> keep as strings
-    const all = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+    // header:1 => arrays; raw:false => keep formatted strings; blankrows:false => skip fully blank
+    const all = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, blankrows: false });
 
-    // Expect: first row = header, then data
-    rowsRaw = all.slice(1).map(r => [
+    if (!all || all.length === 0) throw new Error("Sheet is empty");
+
+    // Auto-detect header: if first row looks like headers (ID/DETAILS/STATUS), skip it; else keep it
+    const first = all[0] || [];
+    const a0 = (first[0] ?? "").toString().trim().toUpperCase();
+    const b0 = (first[1] ?? "").toString().trim().toUpperCase();
+    const hasHeader = (a0 === "ID") || (b0 === "DETAILS") || (b0 === "STATUS");
+
+    rowsRaw = all.slice(hasHeader ? 1 : 0).map(r => [
       (r[0] ?? "").toString().trim(),   // Column A (ID / location)
-      (r[1] ?? "").toString().trim()    // Column B (Details / EMPTY or a code)
+      (r[1] ?? "").toString().trim()    // Column B (status or target)
     ]);
 
-    console.log("Loaded rows:", rowsRaw.length);
+    // Optional quick peek:
+    // console.log("First few rows:", rowsRaw.slice(0,5));
+
   } catch (err) {
     console.error(err);
     document.getElementById("output").textContent =
-      "⚠️ Could not load Excel file. Check file name/path.";
+      "⚠️ Could not load Excel file. Check file name/path and that it sits next to index.html.";
   }
 }
 
-/* ------------ Utility ------------ */
+/* ------------ Utilities ------------ */
 function isEMPTY(val) {
   return val.trim().toUpperCase() === "EMPTY";
 }
 
-// Strip ]C1 prefix if present (scanner symbology identifier)
-function stripC1Prefix(text) {
-  return text.startsWith("]C1") ? text.substring(3) : text;
+// Make the typed/scanned ID safe for comparison
+function cleanId(text) {
+  if (!text) return "";
+  return text
+    .replace(/^\].{2}/, "")                // strips symbology ]C1 / ]E0 / ]A0... at start
+    .replace(/[\u0000-\u001F\u007F]/g, "") // remove hidden control chars
+    .trim();
 }
 
 /**
@@ -67,15 +83,22 @@ function renderList(title, items) {
 /* ------------ Search form ------------ */
 document.getElementById("searchForm").addEventListener("submit", (e) => {
   e.preventDefault();
-  let searchId = document.getElementById("id").value.trim();
-  searchId = stripC1Prefix(searchId); // remove ]C1 if present
 
+  let searchId = cleanId(document.getElementById("id").value);
   const output = document.getElementById("output");
   output.innerHTML = "";
+
+  if (!searchId) {
+    output.innerHTML = `<p style="color:red">Please enter a valid ID.</p>`;
+    return;
+  }
 
   const { foundIndex, locations } = findNextEmptyLocations(searchId, EMPTY_COUNT);
 
   if (foundIndex === -1) {
+    // Debug tip (uncomment if needed):
+    // console.log("Searching for:", JSON.stringify(searchId));
+    // console.log("Sample A-col values:", rowsRaw.slice(0,10).map(r => r[0]));
     output.innerHTML = `<p style="color:red">ID not found in the first column.</p>`;
     return;
   }
@@ -119,7 +142,7 @@ scanBtn.addEventListener("click", async () => {
         ]
       },
       (decodedText) => {
-        const clean = stripC1Prefix(decodedText).trim();
+        const clean = cleanId(decodedText);
         idInput.value = clean;
         stopScanning();
         document.getElementById("searchForm").requestSubmit();
