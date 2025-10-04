@@ -17,7 +17,6 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 16px; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--text); background: var(--bg); }
-    h2 { text-align: center; margin: 0 0 16px; }
     .card { max-width: 900px; margin: 0 auto; background: var(--card); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,.06); padding: 16px; }
     form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; margin-bottom: 12px; }
     input[type="text"] { flex: 1 1 260px; min-width: 200px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; }
@@ -39,7 +38,6 @@
   </style>
 </head>
 <body>
-  <h2>Search from Excel</h2>
 
   <div class="card">
     <form id="searchForm">
@@ -58,7 +56,6 @@
   </div>
 
   <script>
-    // HOW MANY empty bins to return by default
     const EMPTY_COUNT = 20;
     let rowsRaw = [];
 
@@ -66,12 +63,10 @@
       try {
         const res = await fetch("./book1.xlsx");
         if (!res.ok) throw new Error(`Could not fetch Excel: ${res.status} ${res.statusText}`);
-
         const data = await res.arrayBuffer();
         const wb = XLSX.read(data, { type: "array" });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const all = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, blankrows: false });
-        if (!all || all.length === 0) throw new Error("Sheet is empty");
 
         const first = all[0] || [];
         const a0 = (first[0] ?? "").toString().trim().toUpperCase();
@@ -96,31 +91,33 @@
       return v === "" || v === "Y" || v === "EMPTY";
     }
 
+    // ===== UPDATED cleanId() function =====
     function cleanId(text) {
       if (!text) return "";
-      return String(text)
-        .replace(/^\uFEFF/, "")
-        .replace(/[\u0000-\u001F\u007F]/g, "")
-        .trim();
+      let t = String(text);
+
+      // Remove BOM or control chars at start
+      t = t.replace(/^\uFEFF/, "").replace(/^[\u0000-\u001F\u007F]+/, "");
+
+      // Remove ]C1 specifically at start
+      t = t.replace(/^\]C1/, "");
+
+      return t.trim();
     }
 
     function findNextEmptyLocations(startId, count = EMPTY_COUNT) {
       const idx = rowsRaw.findIndex(r => r[0] === startId);
-      console.log("Found index for", startId, ":", idx);
       if (idx === -1) return { foundIndex: -1, locations: [] };
 
       const out = [];
       for (let i = idx + 1; i < rowsRaw.length && out.length < count; i++) {
-        const colA = rowsRaw[i][0];
-        const colB = rowsRaw[i][1];
-        if (isEMPTY(colB)) out.push(colA);
+        if (isEMPTY(rowsRaw[i][1])) out.push(rowsRaw[i][0]);
       }
       return { foundIndex: idx, locations: out };
     }
 
     function renderGroupedLocations(locations) {
       const outputDiv = document.createDocumentFragment();
-
       let currentGroup = null;
       let colorIndex = -1;
       const colors = ["#f0f8ff", "#ffdddd", "#ddffdd", "#fff3cd", "#e0bbff"];
@@ -144,7 +141,7 @@
 
     document.getElementById("searchForm").addEventListener("submit", (e) => {
       e.preventDefault();
-      let searchId = cleanId(document.getElementById("id").value);
+      const searchId = cleanId(document.getElementById("id").value);
       const output = document.getElementById("output");
       output.innerHTML = "";
 
@@ -166,7 +163,7 @@
       output.appendChild(renderGroupedLocations(locations));
     });
 
-    /* ------------ Camera scanning ------------ */
+    /* Camera scanning */
     let html5QrCode = null;
     let isScanning = false;
     const scanBtn = document.getElementById("scanBtn");
