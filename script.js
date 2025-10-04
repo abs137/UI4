@@ -30,9 +30,6 @@ async function loadExcel() {
       (r[1] ?? "").toString().trim()    // Column B (status or target)
     ]);
 
-    // Optional quick peek:
-    // console.log("First few rows:", rowsRaw.slice(0,5));
-
   } catch (err) {
     console.error(err);
     document.getElementById("output").textContent =
@@ -42,7 +39,8 @@ async function loadExcel() {
 
 /* ------------ Utilities ------------ */
 function isEMPTY(val) {
-  return val.trim().toUpperCase() === "EMPTY";
+  const v = (val ?? "").trim().toUpperCase();
+  return v === "Y" || v === "EMPTY";
 }
 
 // Make the typed/scanned ID safe for comparison
@@ -63,7 +61,7 @@ function findNextEmptyLocations(startId, count = EMPTY_COUNT) {
   if (idx === -1) return { foundIndex: -1, locations: [] };
 
   const out = [];
-  for (let i = idx + 1; i < rowsRaw.length && out.length < count; i++) {
+  for (let i = idx; i < rowsRaw.length && out.length < count; i++) {
     const colA = rowsRaw[i][0];
     const colB = rowsRaw[i][1];
     if (isEMPTY(colB)) out.push(colA);
@@ -72,12 +70,39 @@ function findNextEmptyLocations(startId, count = EMPTY_COUNT) {
 }
 
 /* ------------ Render helpers ------------ */
-function renderList(title, items) {
-  const li = items.map(x => `<li><code>${x}</code></li>`).join("");
-  return `
-    <h3>${title}</h3>
-    ${items.length ? `<ol>${li}</ol>` : `<p class="muted">No results.</p>`}
-  `;
+// Render locations grouped by first 8 chars, alternating background colors, spaced groups
+function renderGroupedLocations(locations) {
+  const outputDiv = document.createElement("div");
+
+  let currentGroup = null;
+  let bgColorToggle = false;
+  const colors = ["#ffffff", "#f0f8ff"]; // two alternating background colors
+
+  locations.forEach((loc, index) => {
+    const groupKey = loc.substring(0, 8);
+
+    if (groupKey !== currentGroup) {
+      currentGroup = groupKey;
+      bgColorToggle = !bgColorToggle;
+
+      if (index !== 0) {
+        const spacer = document.createElement("div");
+        spacer.style.height = "12px";  // spacing between groups
+        outputDiv.appendChild(spacer);
+      }
+    }
+
+    const locDiv = document.createElement("div");
+    locDiv.textContent = loc;
+    locDiv.style.backgroundColor = colors[bgColorToggle ? 1 : 0];
+    locDiv.style.padding = "6px 10px";
+    locDiv.style.borderRadius = "6px";
+    locDiv.style.marginBottom = "2px";
+
+    outputDiv.appendChild(locDiv);
+  });
+
+  return outputDiv;
 }
 
 /* ------------ Search form ------------ */
@@ -96,16 +121,19 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
   const { foundIndex, locations } = findNextEmptyLocations(searchId, EMPTY_COUNT);
 
   if (foundIndex === -1) {
-    // Debug tip (uncomment if needed):
-    // console.log("Searching for:", JSON.stringify(searchId));
-    // console.log("Sample A-col values:", rowsRaw.slice(0,10).map(r => r[0]));
     output.innerHTML = `<p style="color:red">ID not found in the first column.</p>`;
     return;
   }
 
-  output.innerHTML =
-    '<p><strong>Start ID:</strong> <code>' + searchId + '</code></p>' +
-    renderList('Next ' + EMPTY_COUNT + ' locations with EMPTY Bins', locations);
+  if (locations.length === 0) {
+    output.innerHTML = `<p class="muted">No empty bins found after the given ID.</p>`;
+    return;
+  }
+
+  const heading = document.createElement("h3");
+  heading.textContent = `Next ${locations.length} locations with EMPTY Bins`;
+  output.appendChild(heading);
+  output.appendChild(renderGroupedLocations(locations));
 });
 
 /* ------------ Camera scanning (html5-qrcode) ------------ */
