@@ -48,6 +48,7 @@ function cleanId(text) {
     .replace(/[\u0000-\u001F\u007F]/g, "") // remove control characters
     .trim();
 }
+console.log(cleanId("]C1ABC123"));
 
 /* ------------ Find next empty locations ------------ */
 function findNextEmptyLocations(startId, count = EMPTY_COUNT) {
