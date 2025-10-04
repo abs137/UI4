@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Search from Excel</title>
+  <title>Search from Excel — Bins Display</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- SheetJS (read Excel) -->
@@ -11,14 +11,14 @@
   <script src="https://unpkg.com/html5-qrcode" defer></script>
 
   <style>
-    :root {
+    :root{
       --bg: #f8f9fa; --card: #ffffff; --text: #1f2937; --muted: #6b7280;
       --primary: #0d6efd; --primary-hover: #0b5ed7; --radius: 10px;
     }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 16px; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--text); background: var(--bg); }
-    h2 { text-align: center; margin: 0 0 16px; }
-    .card { max-width: 800px; margin: 0 auto; background: var(--card); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,.06); padding: 16px; }
+    h2 { text-align: center; margin: 0 0 12px; }
+    .card { max-width: 980px; margin: 0 auto; background: var(--card); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,.06); padding: 16px; }
     form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; margin-bottom: 12px; }
     input[type="text"] { flex: 1 1 260px; min-width: 200px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; }
     button { padding: 10px 14px; border: 0; border-radius: 8px; cursor: pointer; font-size: 1rem; background: var(--primary); color: #fff; }
@@ -27,12 +27,46 @@
     #qr-reader { width: 100%; max-width: 360px; margin: 0 auto; }
     .muted { color: var(--muted); font-size: .92rem; }
     #output { margin-top: 12px; padding: 12px; background: var(--card); border-radius: 8px; border: 1px solid #e5e7eb; }
-    ol { margin: 8px 0 0 20px; }
-    code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+
+    /* NEW: bins display */
+    .bins-header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
+    .bins-count { color:var(--muted); font-size:.95rem; }
+    .bins-grid {
+      display: grid;
+      gap: 12px;
+      /* responsive grid: 1-4 columns depending on width */
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      align-items: start;
+    }
+    .bin-card {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      font-weight: 600;
+      font-size: 1.1rem; /* larger text */
+      letter-spacing: .5px;
+      min-height: 64px;
+    }
+    .bin-left { display:flex; flex-direction:column; gap:4px; }
+    .bin-code { font-size:1.18rem; }
+    .bin-sub { font-size:.85rem; color:var(--muted); font-weight:500; }
+    .remove-btn {
+      background: transparent;
+      border: 1px solid rgba(0,0,0,0.08);
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: .9rem;
+      color: #111827;
+    }
+    .remove-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+
     @media (max-width: 480px) { button { flex: 1 1 100%; } }
   </style>
 
-  <script src="script.js" defer></script>
 </head>
 <body>
   <h2>Search from Excel</h2>
@@ -50,7 +84,187 @@
       <button type="button" id="stopScanBtn">Stop camera</button>
     </div>
 
-    <div id="output"></div>
+    <div id="output">
+      <!-- Bins header -->
+      <div class="bins-header">
+        <div><strong>Next 20 empty bins to remove</strong></div>
+        <div class="bins-count" id="binsCount">Showing 0</div>
+      </div>
+
+      <!-- Bins grid -->
+      <div class="bins-grid" id="binsGrid" aria-live="polite"></div>
+    </div>
   </div>
+
+  <script>
+    /***********************
+     * Example integration:
+     * - You likely compute an array of empty bin IDs from your Excel logic.
+     * - Call setBins(emptyBinsArray) to populate the UI.
+     *
+     * Behavior:
+     * - Shows up to 20 bins.
+     * - Groups consecutive bins that share the same first 8 characters and gives them same background color.
+     * - Remove button deletes from displayed list (does not modify your source file).
+     ***********************/
+
+    // color palette for groups (soft pastel backgrounds)
+    const GROUP_COLORS = [
+      '#E6F7FF', '#FFF0F6', '#F0FFF6', '#FFFBEB', '#F6F7FF', '#F9F0FF'
+    ];
+
+    // internal current bins array
+    let currentBins = [];
+
+    // Utility: render bins
+    function displayBins(bins) {
+      const maxShow = 20;
+      const list = bins.slice(0, maxShow);
+      const grid = document.getElementById('binsGrid');
+      grid.innerHTML = '';
+      document.getElementById('binsCount').textContent = `Showing ${list.length}${bins.length > maxShow ? ' (of ' + bins.length + ')' : ''}`;
+
+      let prevPrefix = null;
+      let colorIndex = -1;
+
+      for (let i = 0; i < list.length; i++) {
+        const code = String(list[i] ?? '').trim();
+        const prefix = code.substring(0, 8);
+
+        if (i === 0 || prefix !== prevPrefix) {
+          // prefix changed -> advance color
+          colorIndex = (colorIndex + 1) % GROUP_COLORS.length;
+        }
+        prevPrefix = prefix;
+
+        const bg = GROUP_COLORS[colorIndex];
+
+        const card = document.createElement('div');
+        card.className = 'bin-card';
+        card.style.background = bg;
+
+        const left = document.createElement('div');
+        left.className = 'bin-left';
+
+        const codeEl = document.createElement('div');
+        codeEl.className = 'bin-code';
+        codeEl.textContent = code;
+
+        const subEl = document.createElement('div');
+        subEl.className = 'bin-sub';
+        subEl.textContent = prefix ? `group: ${prefix}` : '—';
+
+        left.appendChild(codeEl);
+        left.appendChild(subEl);
+
+        const remove = document.createElement('button');
+        remove.className = 'remove-btn';
+        remove.type = 'button';
+        remove.textContent = 'Remove';
+        remove.title = 'Remove from list';
+        // Remove handler: remove only this occurrence
+        remove.addEventListener('click', () => {
+          // remove this item from currentBins (first match)
+          const idx = currentBins.indexOf(code);
+          if (idx !== -1) {
+            currentBins.splice(idx, 1);
+            // re-render
+            displayBins(currentBins);
+          }
+        });
+
+        card.appendChild(left);
+        card.appendChild(remove);
+        grid.appendChild(card);
+      }
+    }
+
+    // Public: set bins list (call this from your Excel parsing/search logic)
+    function setBins(newBins) {
+      // ensure it's an array of non-empty trimmed strings
+      currentBins = (Array.isArray(newBins) ? newBins.map(s => String(s).trim()).filter(Boolean) : []);
+      displayBins(currentBins);
+    }
+
+    // --- Quick demo: (remove this when wiring to your actual data) ---
+    // Generate a demo list of bins with some repeating prefixes to show grouping
+    const demoBins = [
+      '1F2EH101020101','1F2EH101020102','1F2EH101020103','1F2EH101020104','1F2EH101020105',
+      '1F2EH101020106','1F2EH101020107','1F2EH101020108','2G4AA99990001','2G4AA99990002',
+      '2G4AA99990003','2G4AA99990004','2G4AA99990005','3H7BB00001001','3H7BB00001002',
+      '3H7BB00001003','3H7BB00001004','4K9CC12000001','4K9CC12000002','4K9CC12000003',
+      '5M1DD20000001', '5M1DD20000002'
+    ];
+    // demo: automatically populate on load so you can see how it looks
+    setTimeout(() => setBins(demoBins), 120);
+
+    // --- wire up your search form / scanner as before (minimal example) ---
+    const searchForm = document.getElementById('searchForm');
+    searchForm.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const q = document.getElementById('id').value.trim();
+      if (!q) return;
+      // Example: find bins that contain q (replace with your own search logic)
+      const filtered = demoBins.filter(x => x.includes(q));
+      setBins(filtered.length ? filtered : [q]); // show matched or just show the code
+    });
+
+    // Scanner start/stop minimal: show/hide scannerWrap (full camera setup not included here)
+    const scannerWrap = document.getElementById('scannerWrap');
+    const scanBtn = document.getElementById('scanBtn');
+    const stopScanBtn = document.getElementById('stopScanBtn');
+    scanBtn.addEventListener('click', () => {
+      scannerWrap.style.display = 'block';
+      // If you use html5-qrcode, start the scanner here and on success:
+      //   document.getElementById('id').value = scannedText;
+      //   document.getElementById('searchForm').dispatchEvent(new Event('submit'));
+    });
+    stopScanBtn.addEventListener('click', () => {
+      scannerWrap.style.display = 'none';
+      // stop camera / html5-qrcode instance here if used
+    });
+
+    // Optional: function to load an Excel file and extract empty bins from a column named "LOCATION_ID"
+    // Call loadExcelFile(file) with a File object (e.g., from an <input type="file">) if you want:
+    function loadExcelFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        // assume first sheet
+        const sheetName = workbook.SheetNames[0];
+        const ws = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        // Try to pick LOCATION_ID or LOCATION or BIN column heuristically
+        const possibleCols = ['LOCATION_ID', 'LOCATION', 'BIN', 'LOCATIONID', 'LOC'];
+        let col = null;
+        if (json.length > 0) {
+          const keys = Object.keys(json[0]).map(k => k.toUpperCase().replace(/\s+/g, ''));
+          for (const c of possibleCols) {
+            const idx = keys.indexOf(c);
+            if (idx !== -1) { col = Object.keys(json[0])[idx]; break; }
+          }
+        }
+        // fallback: first column
+        if (!col) col = Object.keys(json[0] || {})[0];
+        // Collect rows where ITEM_ID is empty or ITEM column says "EMPTY" — adjust if your sheet differs
+        const extracted = [];
+        for (const row of json) {
+          // You may have ITEM_ID or ITEM column to determine emptiness
+          const itemVal = (row['ITEM_ID'] ?? row['ITEM'] ?? '').toString().trim().toUpperCase();
+          const locVal = (row[col] ?? '').toString().trim();
+          const isEmpty = itemVal === '' || itemVal === 'EMPTY';
+          if (isEmpty && locVal) extracted.push(locVal);
+        }
+        setBins(extracted);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // Expose some functions for integration from outside (optional)
+    window.setBins = setBins;
+    window.loadExcelFile = loadExcelFile;
+
+  </script>
 </body>
 </html>
