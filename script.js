@@ -44,7 +44,7 @@ function isEMPTY(val) {
 function cleanId(text) {
   if (!text) return "";
   return String(text)
-    .replace(/^\].{2}/, "")                // removes any barcode prefix like ]C1, ]D2, etc.
+    .replace(/^\]\w{2}/, "")                // removes any barcode prefix like ]C1, ]D2, etc.
     .replace(/[\u0000-\u001F\u007F]/g, "") // remove control characters
     .trim();
 }
