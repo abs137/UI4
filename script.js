@@ -1,260 +1,123 @@
-// ---------------- Global state ----------------
+const EMPTY_COUNT = 20;
+
+let emptyBins = [];
 let html5QrCode = null;
 let isScanning = false;
-let videoTrack = null;
-let torchOn = false;
 
-// All scanned barcodes (unique); behaves like a set
-const scannedSet = new Set();
+/* ---------- Load Excel (Dictionary of EMPTY bins) ---------- */
+async function loadExcel() {
+  try {
+    const res = await fetch("./book1.xlsx");
+    if (!res.ok) throw new Error("Excel file not found");
 
-/* ---------- Helper: clean scanned / typed text ---------- */
-function cleanId(text) {
-  if (!text) return "";
-  return String(text)
-    .replace(/^\][A-Z0-9]{2}/i, "")          // strip leading ]XX from some scanners
-    .replace(/[\u0000-\u001F\u007F]/g, "")   // remove control chars
-    .trim();
+    const data = await res.arrayBuffer();
+    const wb = XLSX.read(data, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const all = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    const firstCell = (all[0]?.[0] || "").toString().toUpperCase();
+    const hasHeader = firstCell === "LOCATION_ID";
+
+    emptyBins = all
+      .slice(hasHeader ? 1 : 0)
+      .map(r => (r[0] ?? "").toString().trim().toUpperCase())
+      .filter(Boolean);
+
+    console.log("Empty bins loaded:", emptyBins.length);
+  } catch (err) {
+    console.error(err);
+    document.getElementById("output").innerHTML =
+      `<p class="muted">⚠️ Could not load empty bin file.</p>`;
+  }
 }
 
-/* ---------- Render scanned list + count ---------- */
-function renderScanned() {
+/* ---------- Core Dictionary Logic ---------- */
+function findNextEmptyBins(scanId) {
+  const scan = scanId.toUpperCase();
+  const prefix = scan.substring(0, 5);
+
+  const result = [];
+  let started = false;
+
+  for (const id of emptyBins) {
+    if (started && id.substring(0, 5) !== prefix) break;
+    if (id.substring(0, 5) !== prefix) continue;
+
+    if (!started) {
+      if (id < scan) continue;
+      started = true;
+    }
+
+    result.push(id);
+    if (result.length >= EMPTY_COUNT) break;
+  }
+
+  return result;
+}
+
+/* ---------- Render ---------- */
+function renderBins(bins) {
   const grid = document.getElementById("binsGrid");
-  const msg = document.getElementById("message");
-
-  if (!grid || !msg) return;
-
   grid.innerHTML = "";
-  msg.innerHTML = "";
 
-  const count = scannedSet.size;
-
-  if (!count) {
-    msg.innerHTML = `<p class="muted">No barcodes scanned yet.</p>`;
+  if (bins.length === 0) {
+    grid.innerHTML = `<p class="muted">No empty bins found.</p>`;
     return;
   }
 
-  // Show count
-  msg.innerHTML = `<p class="muted">Scanned barcodes: <strong>${count}</strong></p>`;
-
-  // Show each scanned code as a card
-  [...scannedSet]
-    .sort()
-    .forEach(code => {
-      const div = document.createElement("div");
-      div.className = "bin-card";
-      div.textContent = code;
-
-      // Click a card to remove, but ask first
-      div.addEventListener("click", () => {
-        const ok = confirm(
-          `Remove this barcode from the list?\n\n${code}`
-        );
-        if (!ok) return;
-
-        scannedSet.delete(code);
-        renderScanned();
-      });
-
-      grid.appendChild(div);
-    });
+  bins.forEach(bin => {
+    const div = document.createElement("div");
+    div.className = "bin-card";
+    div.textContent = bin;
+    grid.appendChild(div);
+  });
 }
 
-/* ---------- Toggle barcode (add or remove with confirm) ---------- */
-function toggleBarcode(code) {
-  if (!code) return;
-
-  // Already scanned → ask confirmation before removing
-  if (scannedSet.has(code)) {
-    const ok = confirm(
-      `This barcode is already in the list:\n\n${code}\n\nDo you want to REMOVE it?`
-    );
-    if (!ok) return;
-
-    scannedSet.delete(code);
-  } else {
-    // New barcode → just add
-    scannedSet.add(code);
-  }
-
-  renderScanned();
-}
-
-/* ---------- Form: manual entry + "Search" button ---------- */
+/* ---------- Search ---------- */
 document.getElementById("searchForm").addEventListener("submit", (e) => {
   e.preventDefault();
+  const input = document.getElementById("id").value.trim();
+  if (!input) return;
 
-  const input = document.getElementById("id");
-  const val = cleanId(input.value);
-  input.value = "";
-
-  if (!val) return;
-
-  toggleBarcode(val);
+  const bins = findNextEmptyBins(input);
+  renderBins(bins);
 });
 
-/* ---------- QR / Barcode Scanner ---------- */
-async function startScanner() {
+/* ---------- Scanner ---------- */
+document.getElementById("scanBtn").addEventListener("click", async () => {
   try {
     const cameras = await Html5Qrcode.getCameras();
-    if (!cameras || !cameras.length) {
-      alert("No camera found!");
-      return;
-    }
+    if (!cameras.length) return alert("No camera found");
 
     html5QrCode = new Html5Qrcode("qr-reader");
     isScanning = true;
 
     document.getElementById("scannerWrap").style.display = "block";
-    document.getElementById("torchControls").style.display = "block";
 
     await html5QrCode.start(
       cameras[0].id,
-      {
-        fps: 10,
-        qrbox: 250,
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        videoConstraints: {
-          facingMode: "environment",
-          focusMode: "continuous"
-        }
-      },
-      (decodedText) => {
-        const cleaned = cleanId(decodedText);
-        toggleBarcode(cleaned);
+      { fps: 10, qrbox: 250 },
+      decodedText => {
+        document.getElementById("id").value = decodedText;
+        stopScanner();
+        document.getElementById("searchForm").requestSubmit();
       }
     );
-
-    const video = document.querySelector("#qr-reader video");
-    if (video && video.srcObject) {
-      videoTrack = video.srcObject.getVideoTracks()[0];
-    }
-
   } catch (err) {
-    console.error("Scanner error:", err);
-    alert("Could not start camera. Check permissions and HTTPS.");
-    stopScanner();
+    console.error(err);
+    alert("Camera error");
   }
-}
-
-async function stopScanner() {
-  try {
-    if (html5QrCode && isScanning) {
-      await html5QrCode.stop();
-    }
-  } catch (e) {
-    console.warn("Error stopping scanner:", e);
-  }
-
-  isScanning = false;
-  document.getElementById("scannerWrap").style.display = "none";
-  document.getElementById("torchControls").style.display = "none";
-  enableTorch(false);
-}
-
-/* ---------- Torch / Flashlight ---------- */
-async function enableTorch(on) {
-  if (!videoTrack) return;
-
-  try {
-    await videoTrack.applyConstraints({ advanced: [{ torch: on }] });
-    torchOn = on;
-    const btn = document.getElementById("torchToggleBtn");
-    if (btn) {
-      btn.textContent = on ? "🔦 Turn OFF Flashlight" : "💡 Turn ON Flashlight";
-    }
-  } catch (err) {
-    console.warn("Torch not supported:", err);
-  }
-}
-
-/* ---------- Export scanned list to PDF ---------- */
-function downloadScannedPDF() {
-  if (!scannedSet.size) {
-    alert("No barcodes scanned.");
-    return;
-  }
-
-  const JsPDF =
-    (window.jspdf && window.jspdf.jsPDF) ||
-    window.jsPDF ||
-    null;
-
-  if (!JsPDF) {
-    alert("PDF library (jsPDF) is not loaded. Please check script tag.");
-    return;
-  }
-
-  const doc = new JsPDF({
-    orientation: "portrait",
-    unit: "pt",
-    format: "a4"
-  });
-
-  const marginLeft = 40;
-  let y = 40;
-  const lineGap = 16;
-  const pageHeight = doc.internal.pageSize.getHeight() - 40;
-
-  const now = new Date();
-
-  // Title
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("Scanned Barcodes", marginLeft, y);
-  y += 24;
-
-  // Meta info: date/time + count
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text(`Generated: ${now.toLocaleString()}`, marginLeft, y);
-  y += 16;
-  doc.text(`Total scanned: ${scannedSet.size}`, marginLeft, y);
-  y += 24;
-
-  // Header label
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("BARCODE", marginLeft, y);
-  y += 16;
-
-  // Actual data
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-
-  const ids = [...scannedSet].sort();
-
-  for (const code of ids) {
-    if (y > pageHeight) {
-      doc.addPage();
-      y = 40;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text("BARCODE (cont.)", marginLeft, y);
-      y += 20;
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(11);
-    }
-
-    doc.text(String(code), marginLeft, y);
-    y += lineGap;
-  }
-
-  const ts = now.toISOString().replace(/[-:T]/g, "").slice(0, 12);
-  const fileName = `scanned_barcodes_${ts}.pdf`;
-  doc.save(fileName);
-}
-
-/* ---------- Wire buttons ---------- */
-document.getElementById("scanBtn").addEventListener("click", startScanner);
-document.getElementById("stopScanBtn").addEventListener("click", stopScanner);
-document.getElementById("torchToggleBtn").addEventListener("click", () => {
-  enableTorch(!torchOn);
 });
 
-// Reuse existing button for PDF download
-document.getElementById("downloadMissingBtn").addEventListener("click", downloadScannedPDF);
+async function stopScanner() {
+  if (html5QrCode && isScanning) {
+    await html5QrCode.stop();
+  }
+  isScanning = false;
+  document.getElementById("scannerWrap").style.display = "none";
+}
 
-/* ---------- Initial render ---------- */
-renderScanned();
+document.getElementById("stopScanBtn").addEventListener("click", stopScanner);
+
+/* ---------- Init ---------- */
+loadExcel();
