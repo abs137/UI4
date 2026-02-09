@@ -1,10 +1,8 @@
-const EMPTY_COUNT = 20;
-
 let emptyBins = [];
 let html5QrCode = null;
 let isScanning = false;
 
-/* ---------- Load Excel (Dictionary of EMPTY bins) ---------- */
+/* ---------- Load Excel (EMPTY bins dictionary) ---------- */
 async function loadExcel() {
   try {
     const res = await fetch("./book1.xlsx");
@@ -26,12 +24,12 @@ async function loadExcel() {
     console.log("Empty bins loaded:", emptyBins.length);
   } catch (err) {
     console.error(err);
-    document.getElementById("output").innerHTML =
+    document.getElementById("binsGrid").innerHTML =
       `<p class="muted">⚠️ Could not load empty bin file.</p>`;
   }
 }
 
-/* ---------- Core Dictionary Logic ---------- */
+/* ---------- Dictionary-based search ---------- */
 function findNextEmptyBins(scanId) {
   const scan = scanId.toUpperCase();
   const prefix = scan.substring(0, 5);
@@ -49,13 +47,12 @@ function findNextEmptyBins(scanId) {
     }
 
     result.push(id);
-    if (result.length >= EMPTY_COUNT) break;
   }
 
   return result;
 }
 
-/* ---------- Render ---------- */
+/* ---------- Render with GROUP COLORS ---------- */
 function renderBins(bins) {
   const grid = document.getElementById("binsGrid");
   grid.innerHTML = "";
@@ -65,10 +62,23 @@ function renderBins(bins) {
     return;
   }
 
-  bins.forEach(bin => {
+  let currentGroup = null;
+  let colorIndex = -1;
+  const colors = ["#f0f8ff", "#ffdddd", "#ddffdd"];
+
+  bins.forEach(loc => {
+    const groupKey = loc.substring(0, 8); // grouping rule
+
+    if (groupKey !== currentGroup) {
+      currentGroup = groupKey;
+      colorIndex = (colorIndex + 1) % colors.length;
+    }
+
     const div = document.createElement("div");
     div.className = "bin-card";
-    div.textContent = bin;
+    div.textContent = loc;
+    div.style.backgroundColor = colors[colorIndex];
+
     grid.appendChild(div);
   });
 }
@@ -76,10 +86,10 @@ function renderBins(bins) {
 /* ---------- Search ---------- */
 document.getElementById("searchForm").addEventListener("submit", (e) => {
   e.preventDefault();
-  const input = document.getElementById("id").value.trim();
-  if (!input) return;
+  const scanId = document.getElementById("id").value.trim();
+  if (!scanId) return;
 
-  const bins = findNextEmptyBins(input);
+  const bins = findNextEmptyBins(scanId);
   renderBins(bins);
 });
 
@@ -91,7 +101,6 @@ document.getElementById("scanBtn").addEventListener("click", async () => {
 
     html5QrCode = new Html5Qrcode("qr-reader");
     isScanning = true;
-
     document.getElementById("scannerWrap").style.display = "block";
 
     await html5QrCode.start(
@@ -110,9 +119,7 @@ document.getElementById("scanBtn").addEventListener("click", async () => {
 });
 
 async function stopScanner() {
-  if (html5QrCode && isScanning) {
-    await html5QrCode.stop();
-  }
+  if (html5QrCode && isScanning) await html5QrCode.stop();
   isScanning = false;
   document.getElementById("scannerWrap").style.display = "none";
 }
